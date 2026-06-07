@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -48,16 +47,29 @@
   <button class="btn-retry" onclick="location.reload()">🔄 إعادة المحاولة</button>
 </div>
 <div id="iframe-wrap">
-  <iframe id="player-iframe" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+  <iframe id="player-iframe" allowfullscreen
+    allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
 </div>
 <div id="video-wrap">
   <video id="video" controls playsinline webkit-playsinline></video>
 </div>
+
 <script>
+  // ── قراءة المعاملات من query string و hash ──────────────
   const params    = new URLSearchParams(location.search);
+  const hashStr   = location.hash.startsWith("#") ? location.hash.slice(1) : "";
+  const hashParams = new URLSearchParams(hashStr);
+
   const iframeUrl = params.get("iframe") ? decodeURIComponent(params.get("iframe")) : "";
   const streamUrl = params.get("url")    ? decodeURIComponent(params.get("url"))    : "";
-  const subUrl    = params.get("sub")    ? decodeURIComponent(params.get("sub"))    : "";
+
+  // الترجمة: تأتي من query string أو من hash (للـ base64 الطويلة)
+  let subUrl = "";
+  if (params.get("sub")) {
+    subUrl = decodeURIComponent(params.get("sub"));
+  } else if (hashParams.get("sub")) {
+    subUrl = decodeURIComponent(hashParams.get("sub"));
+  }
 
   const loading    = document.getElementById("loading");
   const errDiv     = document.getElementById("error");
@@ -66,6 +78,7 @@
   const iframe     = document.getElementById("player-iframe");
   const video      = document.getElementById("video");
 
+  // ── Telegram WebApp ──────────────────────────────────────
   if (window.Telegram?.WebApp) {
     const tg = window.Telegram.WebApp;
     tg.ready(); tg.expand();
@@ -76,49 +89,65 @@
   function hideLoading() { loading.style.display = "none"; }
   function showError()   { hideLoading(); errDiv.style.display = "flex"; }
 
-  // ── وضع iframe (مسلسلات) ──────────────────────────────
+  // ══════════════════════════════════════════════════════
+  //  وضع iframe — مسلسلات (vsembed)
+  // ══════════════════════════════════════════════════════
   if (iframeUrl) {
     iframeWrap.style.display = "block";
     iframe.src = iframeUrl;
     iframe.addEventListener("load", hideLoading, { once: true });
-    setTimeout(hideLoading, 3000);
+    setTimeout(hideLoading, 4000); // fallback لو load ما اشتغل
 
-  // ── وضع video (أفلام HLS) ────────────────────────────
+  // ══════════════════════════════════════════════════════
+  //  وضع video — أفلام HLS مباشرة
+  // ══════════════════════════════════════════════════════
   } else if (streamUrl) {
     videoWrap.style.display = "block";
 
     function addSubtitle() {
       if (!subUrl) return;
+      // إزالة أي track سابق
+      video.querySelectorAll("track").forEach(t => t.remove());
       const t = document.createElement("track");
       t.kind = "subtitles"; t.label = "العربية";
       t.srclang = "ar"; t.src = subUrl; t.default = true;
       video.appendChild(t);
+      // تفعيل التتبع تلقائياً
+      video.addEventListener("loadedmetadata", () => {
+        if (video.textTracks[0]) video.textTracks[0].mode = "showing";
+      }, { once: true });
     }
 
     function tryNative() {
-      video.src = streamUrl; video.load();
-      video.addEventListener("canplay", () => { hideLoading(); video.play().catch(()=>{}); }, { once:true });
-      video.addEventListener("error", showError, { once:true });
-      setTimeout(() => { if (loading.style.display !== "none") showError(); }, 10000);
+      video.src = streamUrl;
+      video.load();
+      video.addEventListener("canplay", () => {
+        hideLoading(); addSubtitle(); video.play().catch(() => {});
+      }, { once: true });
+      video.addEventListener("error", showError, { once: true });
+      setTimeout(() => { if (loading.style.display !== "none") showError(); }, 12000);
     }
 
     if (Hls.isSupported()) {
-      const hls = new Hls({ enableWorker:true, lowLatencyMode:true });
+      const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
       hls.loadSource(streamUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        hideLoading(); addSubtitle(); video.play().catch(()=>{});
+        hideLoading(); addSubtitle(); video.play().catch(() => {});
       });
       hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) tryNative(); });
+
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = streamUrl;
       video.addEventListener("loadedmetadata", () => {
-        hideLoading(); addSubtitle(); video.play().catch(()=>{});
-      }, { once:true });
-      video.addEventListener("error", tryNative, { once:true });
+        hideLoading(); addSubtitle(); video.play().catch(() => {});
+      }, { once: true });
+      video.addEventListener("error", tryNative, { once: true });
+
     } else {
       tryNative();
     }
+
   } else {
     showError();
   }
