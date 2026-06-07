@@ -1,221 +1,126 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مشغّل الأفلام</title>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      background: #000;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      font-family: Arial, sans-serif;
-      color: #fff;
-      overflow: hidden;
-    }
-
-    video {
-      width: 100%;
-      max-height: 100vh;
-      background: #000;
-    }
-
-    video::cue {
-      font-size: 1.1em;
-      color: #ffffff;
-      background-color: rgba(0, 0, 0, 0.75);
-      font-family: Arial, sans-serif;
-      line-height: 1.5;
-    }
-
-    #overlay {
-      position: absolute;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      color: #aaa;
-      font-size: 14px;
-      text-align: center;
-      padding: 20px;
-    }
-
-    #overlay .spinner {
-      width: 36px;
-      height: 36px;
-      border: 3px solid #333;
-      border-top-color: #e50;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    #error {
-      display: none;
-      position: absolute;
-      text-align: center;
-      color: #ff6b6b;
-      padding: 20px;
-      font-size: 15px;
-      line-height: 1.7;
-    }
-
-    #sub-badge {
-      display: none;
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(0,180,0,0.85);
-      color: #fff;
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      z-index: 10;
-      pointer-events: none;
-    }
-  </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>مشغّل</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { background:#000; width:100%; height:100%; overflow:hidden; font-family:Arial,sans-serif; }
+  #iframe-wrap { display:none; position:fixed; inset:0; background:#000; z-index:5; }
+  #iframe-wrap iframe { width:100%; height:100%; border:none; }
+  #video-wrap { display:none; position:fixed; inset:0; background:#000; z-index:5; }
+  video { width:100%; height:100%; object-fit:contain; background:#000; }
+  #loading {
+    position:fixed; inset:0; background:#000;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#fff; gap:14px; z-index:10;
+  }
+  .spinner {
+    width:48px; height:48px; border:4px solid #333;
+    border-top-color:#4fc3f7; border-radius:50%;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #loading p { font-size:15px; opacity:.8; }
+  #error {
+    display:none; position:fixed; inset:0; background:#0a0a0a;
+    align-items:center; justify-content:center; flex-direction:column;
+    gap:16px; padding:24px; text-align:center; color:#fff; z-index:10;
+  }
+  #error .icon { font-size:48px; }
+  #error h2 { font-size:18px; }
+  #error p { font-size:13px; color:#aaa; line-height:1.6; }
+  .btn-retry {
+    background:#1e88e5; cursor:pointer; border:none; color:#fff;
+    padding:12px 28px; border-radius:8px; font-size:15px;
+  }
+</style>
 </head>
 <body>
+<div id="loading"><div class="spinner"></div><p>جارٍ تحميل...</p></div>
+<div id="error">
+  <div class="icon">📡</div>
+  <h2>تعذّر التشغيل</h2>
+  <p>تأكد من اتصالك بالإنترنت ثم أعد المحاولة.</p>
+  <button class="btn-retry" onclick="location.reload()">🔄 إعادة المحاولة</button>
+</div>
+<div id="iframe-wrap">
+  <iframe id="player-iframe" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe>
+</div>
+<div id="video-wrap">
+  <video id="video" controls playsinline webkit-playsinline></video>
+</div>
+<script>
+  const params    = new URLSearchParams(location.search);
+  const iframeUrl = params.get("iframe") ? decodeURIComponent(params.get("iframe")) : "";
+  const streamUrl = params.get("url")    ? decodeURIComponent(params.get("url"))    : "";
+  const subUrl    = params.get("sub")    ? decodeURIComponent(params.get("sub"))    : "";
 
-  <div id="overlay">
-    <div class="spinner"></div>
-    <span>⏳ جارٍ تحميل المشغّل...</span>
-  </div>
+  const loading    = document.getElementById("loading");
+  const errDiv     = document.getElementById("error");
+  const iframeWrap = document.getElementById("iframe-wrap");
+  const videoWrap  = document.getElementById("video-wrap");
+  const iframe     = document.getElementById("player-iframe");
+  const video      = document.getElementById("video");
 
-  <div id="error">
-    ❌ تعذّر تشغيل الفيلم.<br>
-    <small style="color:#aaa">جرّب سيرفراً آخر من البوت.</small>
-  </div>
+  if (window.Telegram?.WebApp) {
+    const tg = window.Telegram.WebApp;
+    tg.ready(); tg.expand();
+    try { tg.requestFullscreen?.(); } catch(e){}
+    try { navigator.wakeLock?.request("screen"); } catch(e){}
+  }
 
-  <div id="sub-badge">🇸🇦 ترجمة عربية</div>
+  function hideLoading() { loading.style.display = "none"; }
+  function showError()   { hideLoading(); errDiv.style.display = "flex"; }
 
-  <video id="player" controls playsinline crossorigin="anonymous"></video>
+  // ── وضع iframe (مسلسلات) ──────────────────────────────
+  if (iframeUrl) {
+    iframeWrap.style.display = "block";
+    iframe.src = iframeUrl;
+    iframe.addEventListener("load", hideLoading, { once: true });
+    setTimeout(hideLoading, 3000);
 
-  <script>
-    const params  = new URLSearchParams(location.search);
-    const src     = params.get('url');
-    const subSrc  = params.get('sub');
-    const video   = document.getElementById('player');
-    const overlay = document.getElementById('overlay');
-    const errBox  = document.getElementById('error');
-    const badge   = document.getElementById('sub-badge');
+  // ── وضع video (أفلام HLS) ────────────────────────────
+  } else if (streamUrl) {
+    videoWrap.style.display = "block";
 
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.ready();
-      window.Telegram.WebApp.expand();
+    function addSubtitle() {
+      if (!subUrl) return;
+      const t = document.createElement("track");
+      t.kind = "subtitles"; t.label = "العربية";
+      t.srclang = "ar"; t.src = subUrl; t.default = true;
+      video.appendChild(t);
     }
 
-    function showError() {
-      overlay.style.display = 'none';
-      errBox.style.display  = 'block';
+    function tryNative() {
+      video.src = streamUrl; video.load();
+      video.addEventListener("canplay", () => { hideLoading(); video.play().catch(()=>{}); }, { once:true });
+      video.addEventListener("error", showError, { once:true });
+      setTimeout(() => { if (loading.style.display !== "none") showError(); }, 10000);
     }
 
-    function hideOverlay() {
-      overlay.style.display = 'none';
-    }
-
-    /**
-     * إضافة الترجمة بطريقة متوافقة مع WebView تيليجرام.
-     *
-     * المشكلة: عنصر <track> في بعض المتصفحات/WebViews يرفض:
-     *   - Data URLs  (data:text/vtt;base64,...)
-     *   - روابط CORS خارجية
-     *
-     * الحل: تحويل أي رابط (Data URL أو URL خارجي) إلى Blob URL محلي
-     * عبر JavaScript — هذا يعمل في جميع المتصفحات الحديثة والـ WebViews.
-     */
-    async function attachSubtitle() {
-      if (!subSrc) return;
-
-      try {
-        const decoded = decodeURIComponent(subSrc);
-        let vttText;
-
-        if (decoded.startsWith('data:')) {
-          // Data URL — استخراج المحتوى مباشرةً بدون طلب شبكة
-          const base64 = decoded.split(',')[1];
-          vttText = decodeURIComponent(escape(atob(base64)));
-        } else {
-          // رابط خارجي — تحميله ثم تحويله إلى Blob
-          const res = await fetch(decoded);
-          vttText = await res.text();
-        }
-
-        // التأكد من وجود رأس WEBVTT
-        if (!vttText.trimStart().startsWith('WEBVTT')) {
-          vttText = 'WEBVTT\n\n' + vttText;
-        }
-
-        // إنشاء Blob URL محلي — يتجاوز قيود CORS وData URL تماماً
-        const blob    = new Blob([vttText], { type: 'text/vtt' });
-        const blobUrl = URL.createObjectURL(blob);
-
-        // إزالة أي track سابق
-        while (video.firstChild) video.removeChild(video.firstChild);
-
-        const track   = document.createElement('track');
-        track.kind    = 'subtitles';
-        track.label   = 'العربية';
-        track.srclang = 'ar';
-        track.src     = blobUrl;
-        track.default = true;
-        video.appendChild(track);
-
-        track.addEventListener('load', () => {
-          badge.style.display = 'block';
-          for (let t of video.textTracks) {
-            if (t.language === 'ar') {
-              t.mode = 'showing';
-              break;
-            }
-          }
-        });
-
-        // fallback: تفعيل الترجمة بعد ثانية إذا لم يُطلق حدث load
-        setTimeout(() => {
-          for (let t of video.textTracks) {
-            if (t.language === 'ar' && t.mode !== 'showing') {
-              t.mode = 'showing';
-              badge.style.display = 'block';
-            }
-          }
-        }, 1000);
-
-      } catch (e) {
-        console.warn('Subtitle attach failed:', e);
-      }
-    }
-
-    if (!src) {
-      showError();
-    } else if (Hls.isSupported() && !src.includes('.mp4')) {
-      const hls = new Hls({ enableWorker: false });
-      hls.loadSource(decodeURIComponent(src));
+    if (Hls.isSupported()) {
+      const hls = new Hls({ enableWorker:true, lowLatencyMode:true });
+      hls.loadSource(streamUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        hideOverlay();
-        attachSubtitle();
-        video.play().catch(() => {});
+        hideLoading(); addSubtitle(); video.play().catch(()=>{});
       });
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) showError();
-      });
+      hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) tryNative(); });
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = streamUrl;
+      video.addEventListener("loadedmetadata", () => {
+        hideLoading(); addSubtitle(); video.play().catch(()=>{});
+      }, { once:true });
+      video.addEventListener("error", tryNative, { once:true });
     } else {
-      video.src = decodeURIComponent(src);
-      video.addEventListener('canplay', () => {
-        hideOverlay();
-        attachSubtitle();
-        video.play().catch(() => {});
-      });
-      video.addEventListener('error', showError);
+      tryNative();
     }
-  </script>
+  } else {
+    showError();
+  }
+</script>
 </body>
 </html>
