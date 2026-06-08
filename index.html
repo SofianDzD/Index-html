@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <!-- iOS: إخفاء شريط الحالة (البطارية/الواي فاي) -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>مشغّل الأفلام</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -13,8 +17,7 @@
       background: #000;
       width: 100%; height: 100%;
       overflow: hidden;
-      padding: env(safe-area-inset-top) env(safe-area-inset-right)
-               env(safe-area-inset-bottom) env(safe-area-inset-left);
+      /* بدون padding — fullscreen يغطي الـ safe area كاملاً */
     }
 
     .tg-header, [data-telegram-header] { display: none !important; }
@@ -85,12 +88,13 @@
       border-radius: 10px; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       z-index: 30;
-      /* انتقال سلس للإخفاء */
-      opacity: 1;
+      /* مخفي بالافتراضي — يظهر فقط عند اللمس */
+      opacity: 0;
+      pointer-events: none;
       transition: opacity 0.4s ease;
       -webkit-tap-highlight-color: transparent;
     }
-    #fs-btn.hidden { opacity: 0; pointer-events: none; }
+    #fs-btn.visible { opacity: 1; pointer-events: auto; }
     #fs-btn svg { width: 24px; height: 24px; fill: #fff; }
 
     /* شريط التحكم السفلي للفيديو — يختفي تلقائياً أيضاً */
@@ -121,8 +125,13 @@
     tg.setBackgroundColor?.('#000000');
     tg.headerColor = '#000000';
     if (tg.isVersionAtLeast?.('6.1')) tg.setHeaderColor('#000000');
-    if (tg.requestFullscreen) tg.requestFullscreen();
     tg.BackButton?.hide?.();
+    tg.disableVerticalSwipes?.();
+    // استدعاء فوري — في WebView الخاص بتيليجرام لا يحتاج gesture
+    // يُخفي شريط الحالة (بطارية، واي فاي، توقيت) بالكامل
+    try { tg.requestFullscreen?.(); } catch(e) {}
+    // محاولة ثانية بعد لحظة تضمن التطبيق فتح بشكل كامل
+    setTimeout(() => { try { tg.requestFullscreen?.(); } catch(e) {} }, 300);
   }
 
   const params = new URLSearchParams(location.search);
@@ -135,38 +144,41 @@
   const badge   = document.getElementById('sub-badge');
   const fsBtn   = document.getElementById('fs-btn');
 
-  // ── نظام الإخفاء التلقائي بعد 5 ثواني ───────────────
+  // ── نظام الإخفاء التلقائي ───────────────────────────
   let hideTimer = null;
+  let fsRequested = false;
+
+  function requestFsOnce() {
+    if (fsRequested) return;
+    fsRequested = true;
+    // تيليجرام: يعيد الطلب في حال خرج المستخدم من fullscreen
+    if (tg?.requestFullscreen) { try { tg.requestFullscreen(); } catch(e) {} return; }
+    // متصفح عادي
+    if (video.webkitEnterFullscreen) { video.webkitEnterFullscreen(); return; }
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+    if (req) req.call(el);
+  }
 
   function showControls() {
-    // أظهر زر fullscreen
-    fsBtn.classList.remove('hidden');
-    // أظهر شريط تيليجرام العلوي مؤقتاً
-    if (tg?.showSettingsButton) tg.showSettingsButton();
-    // أعد ضبط المؤقت
+    requestFsOnce();
+    fsBtn.classList.add('visible');
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(hideControls, 5000);
+    hideTimer = setTimeout(hideControls, 8000); // يختفي بعد 8 ثواني
   }
 
   function hideControls() {
-    fsBtn.classList.add('hidden');
+    fsBtn.classList.remove('visible');
   }
-
-  // ابدأ مخفياً بعد 3 ثواني من التحميل
-  hideTimer = setTimeout(hideControls, 3000);
 
   // أظهر عند أي لمس أو نقر على الشاشة
   document.addEventListener('touchstart', showControls, { passive: true });
   document.addEventListener('click', showControls);
 
-  // ── Fullscreen ──────────────────────────────────────────
+  // ── Fullscreen button ───────────────────────────────
   fsBtn.addEventListener('click', (e) => {
-    e.stopPropagation(); // لا نُشغّل showControls مرتين
-    if (tg?.requestFullscreen) { tg.requestFullscreen(); return; }
-    if (video.webkitEnterFullscreen) { video.webkitEnterFullscreen(); return; }
-    const el = document.documentElement;
-    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
-    if (req) req.call(el);
+    e.stopPropagation();
+    requestFsOnce();
     showControls();
   });
 
