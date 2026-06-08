@@ -2,40 +2,90 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>مشغّل الأفلام</title>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-    #video-wrap { position: relative; width: 100%; height: 100%; }
-    video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-    video::cue { font-size: 1.1em; color: #fff; background-color: rgba(0,0,0,0.75); font-family: Arial; line-height: 1.5; }
 
-    #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #aaa; font-size: 14px; text-align: center; z-index: 10; }
-    .spinner { width: 36px; height: 36px; border: 3px solid #333; border-top-color: #e50; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    html, body {
+      background: #000;
+      width: 100%; height: 100%;
+      overflow: hidden;
+    }
+
+    #video-wrap {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+
+    video {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    video::cue {
+      font-size: 1.1em;
+      color: #fff;
+      background-color: rgba(0,0,0,0.75);
+      font-family: Arial;
+      line-height: 1.5;
+    }
+
+    #overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: #aaa; font-size: 14px;
+      font-family: Arial; z-index: 10;
+    }
+    .spinner {
+      width: 38px; height: 38px;
+      border: 3px solid #333;
+      border-top-color: #e55;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    #error { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; flex-direction: column; text-align: center; color: #ff6b6b; padding: 20px; font-size: 15px; line-height: 1.7; z-index: 10; }
+    #error {
+      display: none; position: absolute; inset: 0;
+      align-items: center; justify-content: center;
+      flex-direction: column; text-align: center;
+      color: #ff6b6b; padding: 20px;
+      font-size: 15px; line-height: 1.8;
+      font-family: Arial; z-index: 10;
+    }
 
-    #sub-badge { display: none; position: absolute; top: 12px; right: 12px; background: rgba(0,180,0,0.85); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 20px; z-index: 20; pointer-events: none; }
+    #sub-badge {
+      display: none; position: absolute;
+      top: 14px; right: 14px;
+      background: rgba(0,160,0,0.85);
+      color: #fff; font-size: 12px;
+      padding: 4px 12px; border-radius: 20px;
+      z-index: 20; font-family: Arial;
+      pointer-events: none;
+    }
 
-    /* زر fullscreen */
+    /* زر ملء الشاشة */
     #fs-btn {
       position: absolute;
-      bottom: 60px;
-      right: 12px;
-      width: 44px; height: 44px;
-      background: rgba(0,0,0,0.65);
-      border: 1.5px solid rgba(255,255,255,0.25);
+      bottom: 70px; right: 14px;
+      width: 46px; height: 46px;
+      background: rgba(0,0,0,0.7);
+      border: 1px solid rgba(255,255,255,0.2);
       border-radius: 10px;
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       z-index: 30;
-      transition: opacity 0.3s, background 0.2s;
     }
-    #fs-btn:active { background: rgba(255,255,255,0.15); }
-    #fs-btn svg { width: 22px; height: 22px; fill: #fff; }
+    #fs-btn svg { width: 24px; height: 24px; fill: #fff; }
   </style>
 </head>
 <body>
@@ -44,87 +94,57 @@
   <div id="error">❌ تعذّر تشغيل الفيلم.<br><small style="color:#aaa">جرّب سيرفراً آخر.</small></div>
   <div id="sub-badge">🇸🇦 ترجمة عربية</div>
   <video id="player" controls playsinline crossorigin="anonymous"></video>
-
-  <button id="fs-btn" title="ملء الشاشة">
-    <!-- أيقونة expand -->
-    <svg id="ico-expand" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
-    <!-- أيقونة exit -->
-    <svg id="ico-exit"   viewBox="0 0 24 24" style="display:none"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+  <button id="fs-btn">
+    <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
   </button>
 </div>
 
 <script>
-  const params  = new URLSearchParams(location.search);
-  const src     = params.get('url');
-  const subSrc  = params.get('sub');
+  // ── Telegram WebApp init ──────────────────────────────
+  const tg = window.Telegram?.WebApp;
+  if (tg) {
+    tg.ready();
+    tg.expand();
+    // إخفاء زر الإغلاق وتوسيع التطبيق
+    tg.setHeaderColor?.('#000000');
+    tg.setBackgroundColor?.('#000000');
+    // إخفاء شريط التنقل إن أمكن
+    tg.enableClosingConfirmation?.();
+  }
+
+  const params = new URLSearchParams(location.search);
+  const src    = params.get('url');
+  const subSrc = params.get('sub');
 
   const video   = document.getElementById('player');
   const overlay = document.getElementById('overlay');
   const errBox  = document.getElementById('error');
   const badge   = document.getElementById('sub-badge');
   const fsBtn   = document.getElementById('fs-btn');
-  const icoExp  = document.getElementById('ico-expand');
-  const icoExit = document.getElementById('ico-exit');
 
-  const tg = window.Telegram?.WebApp;
-  if (tg) { tg.ready(); tg.expand(); }
-
-  // ── Fullscreen ───────────────────────────────────────────
-  // تيليجرام يوفر tg.requestFullscreen() الخاص به
-  // نستخدمه أولاً، ثم native كـ fallback
-  let tgIsFullscreen = false;
-
-  function enterFullscreen() {
+  // ── Fullscreen: نستخدم video.webkitEnterFullscreen للموبايل ──
+  fsBtn.addEventListener('click', () => {
+    // iOS Safari
+    if (video.webkitEnterFullscreen) {
+      video.webkitEnterFullscreen();
+      return;
+    }
+    // Android Chrome / تيليجرام أندرويد
+    if (video.requestFullscreen) {
+      video.requestFullscreen();
+      return;
+    }
+    if (video.webkitRequestFullscreen) {
+      video.webkitRequestFullscreen();
+      return;
+    }
+    // Telegram WebApp API
     if (tg?.requestFullscreen) {
-      // Telegram WebApp API الرسمي
       tg.requestFullscreen();
-      tgIsFullscreen = true;
-      updateIcon(true);
-    } else {
-      // fallback للمتصفح العادي
-      const el = document.documentElement;
-      (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen)?.call(el);
     }
-  }
-
-  function exitFullscreen() {
-    if (tg?.exitFullscreen) {
-      tg.exitFullscreen();
-      tgIsFullscreen = false;
-      updateIcon(false);
-    } else {
-      (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen)?.call(document);
-    }
-  }
-
-  function updateIcon(isFS) {
-    icoExp.style.display  = isFS ? 'none'  : 'block';
-    icoExit.style.display = isFS ? 'block' : 'none';
-  }
-
-  fsBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    tgIsFullscreen ? exitFullscreen() : enterFullscreen();
   });
 
-  // مزامنة أيقونة الـ fullscreen مع أحداث المتصفح
-  ['fullscreenchange','webkitfullscreenchange','mozfullscreenchange'].forEach(ev => {
-    document.addEventListener(ev, () => {
-      const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      tgIsFullscreen = isFS;
-      updateIcon(isFS);
-    });
-  });
-
-  // مزامنة مع حدث تيليجرام fullscreen
-  if (tg) {
-    tg.onEvent?.('fullscreen_changed', (data) => {
-      tgIsFullscreen = data?.is_fullscreen ?? false;
-      updateIcon(tgIsFullscreen);
-    });
-  }
-
-  // ── Player ───────────────────────────────────────────────
+  // ── Player ────────────────────────────────────────────
   function showError()   { overlay.style.display = 'none'; errBox.style.display = 'flex'; }
   function hideOverlay() { overlay.style.display = 'none'; }
 
@@ -142,14 +162,16 @@
       const blobUrl = URL.createObjectURL(new Blob([vttText], { type: 'text/vtt' }));
       while (video.firstChild) video.removeChild(video.firstChild);
       const track = document.createElement('track');
-      Object.assign(track, { kind:'subtitles', label:'العربية', srclang:'ar', src:blobUrl, default:true });
+      track.kind = 'subtitles'; track.label = 'العربية';
+      track.srclang = 'ar'; track.src = blobUrl; track.default = true;
       video.appendChild(track);
       track.addEventListener('load', () => {
         badge.style.display = 'block';
-        for (let t of video.textTracks) if (t.language === 'ar') { t.mode = 'showing'; break; }
+        for (let t of video.textTracks) if (t.language==='ar') { t.mode='showing'; break; }
       });
       setTimeout(() => {
-        for (let t of video.textTracks) if (t.language==='ar' && t.mode!=='showing') { t.mode='showing'; badge.style.display='block'; }
+        for (let t of video.textTracks)
+          if (t.language==='ar' && t.mode!=='showing') { t.mode='showing'; badge.style.display='block'; }
       }, 1000);
     } catch(e) { console.warn('Subtitle error:', e); }
   }
@@ -163,7 +185,7 @@
     hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) showError(); });
   } else {
     video.src = decodeURIComponent(src);
-    video.addEventListener('canplay',  () => { hideOverlay(); attachSubtitle(); video.play().catch(()=>{}); });
+    video.addEventListener('canplay', () => { hideOverlay(); attachSubtitle(); video.play().catch(()=>{}); });
     video.addEventListener('error', showError);
   }
 </script>
