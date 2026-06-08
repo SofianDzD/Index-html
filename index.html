@@ -7,237 +7,152 @@
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: Arial, sans-serif; color: #fff; overflow: hidden; }
 
-    body {
-      background: #000;
+    #video-wrap { position: relative; width: 100%; height: 100vh; display: flex; align-items: center; justify-content: center; }
+    video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+
+    video::cue { font-size: 1.1em; color: #fff; background-color: rgba(0,0,0,0.75); font-family: Arial, sans-serif; line-height: 1.5; }
+
+    /* زر fullscreen مخصص */
+    #fs-btn {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      width: 40px;
+      height: 40px;
+      background: rgba(0,0,0,0.6);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100vh;
-      font-family: Arial, sans-serif;
-      color: #fff;
-      overflow: hidden;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity 0.3s;
     }
+    #video-wrap:hover #fs-btn,
+    #video-wrap.show-controls #fs-btn { opacity: 1; }
+    #fs-btn svg { width: 20px; height: 20px; fill: #fff; }
 
-    video {
-      width: 100%;
-      max-height: 100vh;
-      background: #000;
-    }
-
-    video::cue {
-      font-size: 1.1em;
-      color: #ffffff;
-      background-color: rgba(0, 0, 0, 0.75);
-      font-family: Arial, sans-serif;
-      line-height: 1.5;
-    }
-
-    /* ── iframe للمسلسلات ── */
-    #iframe-wrap {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: #000;
-      z-index: 5;
-    }
-    #iframe-wrap iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-
-    #overlay {
-      position: absolute;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-      color: #aaa;
-      font-size: 14px;
-      text-align: center;
-      padding: 20px;
-    }
-
-    #overlay .spinner {
-      width: 36px;
-      height: 36px;
-      border: 3px solid #333;
-      border-top-color: #e50;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
+    #overlay { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 10px; color: #aaa; font-size: 14px; text-align: center; padding: 20px; z-index: 10; }
+    #overlay .spinner { width: 36px; height: 36px; border: 3px solid #333; border-top-color: #e50; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    #error {
-      display: none;
-      position: absolute;
-      text-align: center;
-      color: #ff6b6b;
-      padding: 20px;
-      font-size: 15px;
-      line-height: 1.7;
-    }
+    #error { display: none; position: absolute; text-align: center; color: #ff6b6b; padding: 20px; font-size: 15px; line-height: 1.7; z-index: 10; }
 
-    #sub-badge {
-      display: none;
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      background: rgba(0,180,0,0.85);
-      color: #fff;
-      font-size: 12px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      z-index: 10;
-      pointer-events: none;
-    }
+    #sub-badge { display: none; position: absolute; top: 12px; right: 12px; background: rgba(0,180,0,0.85); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 20px; z-index: 10; pointer-events: none; }
   </style>
 </head>
 <body>
+  <div id="video-wrap">
+    <div id="overlay"><div class="spinner"></div><span>⏳ جارٍ تحميل المشغّل...</span></div>
+    <div id="error">❌ تعذّر تشغيل الفيلم.<br><small style="color:#aaa">جرّب سيرفراً آخر من البوت.</small></div>
+    <div id="sub-badge">🇸🇦 ترجمة عربية</div>
+    <video id="player" controls playsinline crossorigin="anonymous"></video>
 
-  <!-- وضع المسلسلات: iframe مباشر -->
-  <div id="iframe-wrap">
-    <iframe id="tv-iframe"
-      allowfullscreen
-      allow="autoplay; fullscreen; encrypted-media; picture-in-picture">
-    </iframe>
+    <!-- زر fullscreen مخصص يعمل في تيليجرام -->
+    <button id="fs-btn" title="ملء الشاشة">
+      <svg id="fs-icon-expand" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+      <svg id="fs-icon-exit" viewBox="0 0 24 24" style="display:none"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+    </button>
   </div>
-
-  <!-- وضع الأفلام -->
-  <div id="overlay">
-    <div class="spinner"></div>
-    <span>⏳ جارٍ تحميل المشغّل...</span>
-  </div>
-
-  <div id="error">
-    ❌ تعذّر تشغيل الفيلم.<br>
-    <small style="color:#aaa">جرّب سيرفراً آخر من البوت.</small>
-  </div>
-
-  <div id="sub-badge">🇸🇦 ترجمة عربية</div>
-
-  <video id="player" controls playsinline crossorigin="anonymous"></video>
 
   <script>
-    const params    = new URLSearchParams(location.search);
-    const iframeSrc = params.get('iframe') ? decodeURIComponent(params.get('iframe')) : null;
-    const src       = params.get('url');
-    const subSrc    = params.get('sub');
-
-    const video     = document.getElementById('player');
-    const overlay   = document.getElementById('overlay');
-    const errBox    = document.getElementById('error');
-    const badge     = document.getElementById('sub-badge');
-    const iframeWrap= document.getElementById('iframe-wrap');
-    const tvIframe  = document.getElementById('tv-iframe');
+    const params  = new URLSearchParams(location.search);
+    const src     = params.get('url');
+    const subSrc  = params.get('sub');
+    const video   = document.getElementById('player');
+    const wrap    = document.getElementById('video-wrap');
+    const overlay = document.getElementById('overlay');
+    const errBox  = document.getElementById('error');
+    const badge   = document.getElementById('sub-badge');
+    const fsBtn   = document.getElementById('fs-btn');
+    const fsExpand= document.getElementById('fs-icon-expand');
+    const fsExit  = document.getElementById('fs-icon-exit');
 
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
-      try { window.Telegram.WebApp.requestFullscreen?.(); } catch(e) {}
     }
 
-    // ══════════════════════════════════════════
-    //  وضع المسلسلات — iframe مباشر
-    // ══════════════════════════════════════════
-    if (iframeSrc) {
-      iframeWrap.style.display = 'block';
-      overlay.style.display    = 'none';
-      video.style.display      = 'none';
-      tvIframe.src = iframeSrc;
+    // ── Fullscreen Logic ─────────────────────────────────────
+    function enterFS() {
+      const el = document.documentElement;
+      (el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen)?.call(el);
+    }
+    function exitFS() {
+      (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen)?.call(document);
+    }
+    function isFS() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement);
+    }
+    function updateFsIcon() {
+      fsExpand.style.display = isFS() ? 'none' : 'block';
+      fsExit.style.display   = isFS() ? 'block' : 'none';
+    }
 
-    // ══════════════════════════════════════════
-    //  وضع الأفلام — HLS / MP4
-    // ══════════════════════════════════════════
-    } else {
+    fsBtn.addEventListener('click', () => { isFS() ? exitFS() : enterFS(); });
+    document.addEventListener('fullscreenchange',       updateFsIcon);
+    document.addEventListener('webkitfullscreenchange', updateFsIcon);
+    document.addEventListener('mozfullscreenchange',    updateFsIcon);
 
-      function showError() {
-        overlay.style.display = 'none';
-        errBox.style.display  = 'block';
-      }
+    // إظهار زر الـ fullscreen عند اللمس
+    let hideTimer;
+    wrap.addEventListener('click', () => {
+      wrap.classList.add('show-controls');
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => wrap.classList.remove('show-controls'), 3000);
+    });
 
-      function hideOverlay() {
-        overlay.style.display = 'none';
-      }
+    // ── Player Logic ─────────────────────────────────────────
+    function showError()   { overlay.style.display = 'none'; errBox.style.display = 'block'; }
+    function hideOverlay() { overlay.style.display = 'none'; }
 
-      async function attachSubtitle() {
-        if (!subSrc) return;
-        try {
-          const decoded = decodeURIComponent(subSrc);
-          let vttText;
-
-          if (decoded.startsWith('data:')) {
-            const base64 = decoded.split(',')[1];
-            vttText = decodeURIComponent(escape(atob(base64)));
-          } else {
-            const res = await fetch(decoded);
-            vttText = await res.text();
-          }
-
-          if (!vttText.trimStart().startsWith('WEBVTT')) {
-            vttText = 'WEBVTT\n\n' + vttText;
-          }
-
-          const blob    = new Blob([vttText], { type: 'text/vtt' });
-          const blobUrl = URL.createObjectURL(blob);
-
-          while (video.firstChild) video.removeChild(video.firstChild);
-
-          const track   = document.createElement('track');
-          track.kind    = 'subtitles';
-          track.label   = 'العربية';
-          track.srclang = 'ar';
-          track.src     = blobUrl;
-          track.default = true;
-          video.appendChild(track);
-
-          track.addEventListener('load', () => {
-            badge.style.display = 'block';
-            for (let t of video.textTracks) {
-              if (t.language === 'ar') { t.mode = 'showing'; break; }
-            }
-          });
-
-          setTimeout(() => {
-            for (let t of video.textTracks) {
-              if (t.language === 'ar' && t.mode !== 'showing') {
-                t.mode = 'showing';
-                badge.style.display = 'block';
-              }
-            }
-          }, 1000);
-
-        } catch (e) {
-          console.warn('Subtitle attach failed:', e);
+    async function attachSubtitle() {
+      if (!subSrc) return;
+      try {
+        const decoded = decodeURIComponent(subSrc);
+        let vttText;
+        if (decoded.startsWith('data:')) {
+          const base64 = decoded.split(',')[1];
+          vttText = decodeURIComponent(escape(atob(base64)));
+        } else {
+          const res = await fetch(decoded);
+          vttText = await res.text();
         }
-      }
+        if (!vttText.trimStart().startsWith('WEBVTT')) vttText = 'WEBVTT\n\n' + vttText;
+        const blob    = new Blob([vttText], { type: 'text/vtt' });
+        const blobUrl = URL.createObjectURL(blob);
+        while (video.firstChild) video.removeChild(video.firstChild);
+        const track   = document.createElement('track');
+        track.kind = 'subtitles'; track.label = 'العربية';
+        track.srclang = 'ar'; track.src = blobUrl; track.default = true;
+        video.appendChild(track);
+        track.addEventListener('load', () => {
+          badge.style.display = 'block';
+          for (let t of video.textTracks) { if (t.language === 'ar') { t.mode = 'showing'; break; } }
+        });
+        setTimeout(() => {
+          for (let t of video.textTracks) {
+            if (t.language === 'ar' && t.mode !== 'showing') { t.mode = 'showing'; badge.style.display = 'block'; }
+          }
+        }, 1000);
+      } catch(e) { console.warn('Subtitle attach failed:', e); }
+    }
 
-      if (!src) {
-        showError();
-      } else if (Hls.isSupported() && !src.includes('.mp4')) {
-        const hls = new Hls({ enableWorker: false });
-        hls.loadSource(decodeURIComponent(src));
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          hideOverlay();
-          attachSubtitle();
-          video.play().catch(() => {});
-        });
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          if (data.fatal) showError();
-        });
-      } else {
-        video.src = decodeURIComponent(src);
-        video.addEventListener('canplay', () => {
-          hideOverlay();
-          attachSubtitle();
-          video.play().catch(() => {});
-        });
-        video.addEventListener('error', showError);
-      }
+    if (!src) { showError(); }
+    else if (Hls.isSupported() && !src.includes('.mp4')) {
+      const hls = new Hls({ enableWorker: false });
+      hls.loadSource(decodeURIComponent(src));
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => { hideOverlay(); attachSubtitle(); video.play().catch(()=>{}); });
+      hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) showError(); });
+    } else {
+      video.src = decodeURIComponent(src);
+      video.addEventListener('canplay', () => { hideOverlay(); attachSubtitle(); video.play().catch(()=>{}); });
+      video.addEventListener('error', showError);
     }
   </script>
 </body>
