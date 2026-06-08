@@ -13,11 +13,19 @@
       background: #000;
       width: 100%; height: 100%;
       overflow: hidden;
+      /* ملء كامل بما فيه منطقة الـ notch */
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
+
+    /* إخفاء شريط تيليجرام العلوي عبر CSS */
+    .tg-header, [data-telegram-header] { display: none !important; }
 
     #video-wrap {
       position: fixed;
       inset: 0;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -25,7 +33,8 @@
     }
 
     video {
-      width: 100%; height: 100%;
+      width: 100vw;
+      height: 100vh;
       object-fit: contain;
       background: #000;
     }
@@ -105,11 +114,19 @@
   if (tg) {
     tg.ready();
     tg.expand();
-    // إخفاء زر الإغلاق وتوسيع التطبيق
     tg.setHeaderColor?.('#000000');
     tg.setBackgroundColor?.('#000000');
-    // إخفاء شريط التنقل إن أمكن
-    tg.enableClosingConfirmation?.();
+    // إخفاء الهيدر والشريط العلوي
+    tg.headerColor = '#000000';
+    if (tg.isVersionAtLeast?.('6.1')) {
+      tg.setHeaderColor('#000000');
+    }
+    // تفعيل وضع ملء الشاشة الكامل (Telegram Bot API 8.0+)
+    if (tg.requestFullscreen) {
+      tg.requestFullscreen();
+    }
+    // إخفاء زر الرجوع إذا كان ظاهراً
+    tg.BackButton?.hide?.();
   }
 
   const params = new URLSearchParams(location.search);
@@ -122,27 +139,33 @@
   const badge   = document.getElementById('sub-badge');
   const fsBtn   = document.getElementById('fs-btn');
 
-  // ── Fullscreen: نستخدم video.webkitEnterFullscreen للموبايل ──
+  // ── Fullscreen ──────────────────────────────────────────
   fsBtn.addEventListener('click', () => {
+    // الأولوية: Telegram API (يخفي الشريط العلوي كاملاً)
+    if (tg?.requestFullscreen) {
+      tg.requestFullscreen();
+      return;
+    }
     // iOS Safari
     if (video.webkitEnterFullscreen) {
       video.webkitEnterFullscreen();
       return;
     }
-    // Android Chrome / تيليجرام أندرويد
-    if (video.requestFullscreen) {
-      video.requestFullscreen();
-      return;
-    }
-    if (video.webkitRequestFullscreen) {
-      video.webkitRequestFullscreen();
-      return;
-    }
-    // Telegram WebApp API
-    if (tg?.requestFullscreen) {
-      tg.requestFullscreen();
-    }
+    // Android / باقي المتصفحات
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
+    if (req) req.call(el);
   });
+
+  // تحديث أيقونة الزر عند الدخول/الخروج من fullscreen
+  document.addEventListener('fullscreenchange', updateFsIcon);
+  document.addEventListener('webkitfullscreenchange', updateFsIcon);
+  function updateFsIcon() {
+    const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    fsBtn.innerHTML = isFs
+      ? `<svg viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>`
+      : `<svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+  }
 
   // ── Player ────────────────────────────────────────────
   function showError()   { overlay.style.display = 'none'; errBox.style.display = 'flex'; }
