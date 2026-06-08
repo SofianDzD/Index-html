@@ -65,15 +65,17 @@
 
     /* شارة الترجمة — تختفي مع باقي العناصر */
     #sub-badge {
-      display: none; position: absolute;
+      position: absolute;
       top: 14px; right: 14px;
       background: rgba(0,160,0,0.85);
       color: #fff; font-size: 12px;
       padding: 4px 12px; border-radius: 20px;
       z-index: 20; font-family: Arial;
       pointer-events: none;
+      opacity: 0;
       transition: opacity 0.4s ease;
     }
+    #sub-badge.visible { opacity: 1; }
 
     /* ── نظام الإخفاء التلقائي ── */
     /* الشريط العلوي لتيليجرام يُخفى عبر الـ header color
@@ -127,11 +129,6 @@
     if (tg.isVersionAtLeast?.('6.1')) tg.setHeaderColor('#000000');
     tg.BackButton?.hide?.();
     tg.disableVerticalSwipes?.();
-    // استدعاء فوري — في WebView الخاص بتيليجرام لا يحتاج gesture
-    // يُخفي شريط الحالة (بطارية، واي فاي، توقيت) بالكامل
-    try { tg.requestFullscreen?.(); } catch(e) {}
-    // محاولة ثانية بعد لحظة تضمن التطبيق فتح بشكل كامل
-    setTimeout(() => { try { tg.requestFullscreen?.(); } catch(e) {} }, 300);
   }
 
   const params = new URLSearchParams(location.search);
@@ -144,31 +141,58 @@
   const badge   = document.getElementById('sub-badge');
   const fsBtn   = document.getElementById('fs-btn');
 
-  // ── نظام الإخفاء التلقائي ───────────────────────────
-  let hideTimer = null;
-  let fsRequested = false;
-
-  function requestFsOnce() {
-    if (fsRequested) return;
-    fsRequested = true;
-    // تيليجرام: يعيد الطلب في حال خرج المستخدم من fullscreen
-    if (tg?.requestFullscreen) { try { tg.requestFullscreen(); } catch(e) {} return; }
-    // متصفح عادي
-    if (video.webkitEnterFullscreen) { video.webkitEnterFullscreen(); return; }
-    const el = document.documentElement;
-    const req = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
-    if (req) req.call(el);
+  // ── Fullscreen موحّد: iOS + Android ──────────────────
+  // الطريقة ١: Telegram API — تعمل فوراً بدون gesture
+  function goTgFullscreen() {
+    if (tg?.requestFullscreen) {
+      try { tg.requestFullscreen(); } catch(e) {}
+    }
   }
 
+  // الطريقة ٢: Native Fullscreen API — تحتاج gesture من المستخدم
+  // يُستدعى فقط داخل معالج touchstart/click
+  function goNativeFullscreen() {
+    const el = document.documentElement;
+    const req = el.requestFullscreen
+             || el.webkitRequestFullscreen
+             || el.mozRequestFullScreen;
+    if (req) { try { req.call(el); } catch(e) {} }
+  }
+
+  // Telegram فقط عند التحميل
+  goTgFullscreen();
+  setTimeout(goTgFullscreen, 300);
+  setTimeout(goTgFullscreen, 1000);
+
+  // إعادة الدخول عند العودة للتطبيق من الخلفية (أندرويد)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') goTgFullscreen();
+  });
+
+  // ── نظام الإخفاء التلقائي ───────────────────────────
+  let hideTimer = null;
+  let subtitleReady = false; // هل الترجمة محمّلة؟
+
   function showControls() {
-    requestFsOnce();
+    // Telegram fullscreen + Native fullscreen (هنا داخل gesture handler)
+    goTgFullscreen();
+    goNativeFullscreen();
+    // iOS video fallback
+    if (video.webkitEnterFullscreen
+        && !document.fullscreenElement
+        && !document.webkitFullscreenElement) {
+      try { video.webkitEnterFullscreen(); } catch(e) {}
+    }
     fsBtn.classList.add('visible');
+    // أظهر شارة الترجمة فقط إن كانت الترجمة محمّلة
+    if (subtitleReady) badge.classList.add('visible');
     clearTimeout(hideTimer);
-    hideTimer = setTimeout(hideControls, 8000); // يختفي بعد 8 ثواني
+    hideTimer = setTimeout(hideControls, 8000);
   }
 
   function hideControls() {
     fsBtn.classList.remove('visible');
+    badge.classList.remove('visible');
   }
 
   // أظهر عند أي لمس أو نقر على الشاشة
@@ -178,7 +202,8 @@
   // ── Fullscreen button ───────────────────────────────
   fsBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    requestFsOnce();
+    goTgFullscreen();
+    goNativeFullscreen();
     showControls();
   });
 
@@ -213,12 +238,12 @@
       track.srclang = 'ar'; track.src = blobUrl; track.default = true;
       video.appendChild(track);
       track.addEventListener('load', () => {
-        badge.style.display = 'block';
+        subtitleReady = true; // علّم أن الترجمة جاهزة (لا تُظهر الشارة مباشرة)
         for (let t of video.textTracks) if (t.language==='ar') { t.mode='showing'; break; }
       });
       setTimeout(() => {
         for (let t of video.textTracks)
-          if (t.language==='ar' && t.mode!=='showing') { t.mode='showing'; badge.style.display='block'; }
+          if (t.language==='ar' && t.mode!=='showing') { t.mode='showing'; subtitleReady = true; }
       }, 1000);
     } catch(e) { console.warn('Subtitle error:', e); }
   }
