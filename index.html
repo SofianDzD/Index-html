@@ -277,7 +277,19 @@
     hls.loadSource(decodeURIComponent(src));
     hls.attachMedia(video);
     hls.on(Hls.Events.MANIFEST_PARSED, () => { hideOverlay(); attachSubtitle(); video.play().catch(()=>{}); });
-    hls.on(Hls.Events.ERROR, (_, d) => { if (d.fatal) showError(); });
+    hls.on(Hls.Events.ERROR, (_, d) => {
+      if (!d.fatal) return; // أخطاء غير مميتة — HLS.js يتعامل معها تلقائياً
+      if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        // خطأ شبكة مؤقت → حاول إعادة التحميل
+        hls.startLoad();
+      } else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        // خطأ وسائط → حاول الاسترداد أولاً
+        hls.recoverMediaError();
+      } else {
+        // خطأ غير قابل للاسترداد → أظهر رسالة الخطأ
+        showError();
+      }
+    });
   } else {
     video.src = decodeURIComponent(src);
     video.addEventListener('canplay', () => { hideOverlay(); attachSubtitle(); video.play().catch(()=>{}); });
