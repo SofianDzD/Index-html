@@ -154,9 +154,21 @@
     try { tg.requestFullscreen?.(); } catch(e) {}
   }
 
-  const params = new URLSearchParams(location.search);
-  const src    = params.get('url');
-  const subSrc = params.get('sub');
+  const params    = new URLSearchParams(location.search);
+  const src       = params.get('url');
+  const subSrc    = params.get('sub');
+  const iframeSrc = params.get('iframe') ? decodeURIComponent(params.get('iframe')) : null;
+
+  // ── وضع Embed (VidRock / VidNest) — iframe يملأ الشاشة ──
+  if (iframeSrc) {
+    document.getElementById('video-wrap').innerHTML =
+      '<iframe src="' + iframeSrc + '"' +
+      ' style="position:fixed;inset:0;width:100%;height:100%;border:none;background:#000"' +
+      ' allowfullscreen webkitallowfullscreen mozallowfullscreen' +
+      ' allow="autoplay;fullscreen;encrypted-media;picture-in-picture"' +
+      ' referrerpolicy="no-referrer"></iframe>';
+    throw new Error('iframe_mode'); // يوقف بقية الكود
+  }
 
   const video   = document.getElementById('player');
   const overlay = document.getElementById('overlay');
